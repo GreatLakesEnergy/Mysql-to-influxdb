@@ -8,7 +8,8 @@ import MySQLdb.cursors
 
 from ConfigParser import RawConfigParser
 from influxdb import InfluxDBClient
-
+from time_utils import get_epoch_from_datetime
+from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
@@ -45,6 +46,10 @@ class Mysql2Influx:
 
         self._update_rows()
 
+        logger.debug('All data transfer  completed : %s '% self._complete)
+        self._db_client.close()
+
+
     def _purge_data_in_db(self):
         """
         Once the data is configured and within influx we can pruge our database
@@ -74,7 +79,7 @@ class Mysql2Influx:
         """
         Break up data to make sure in the format the inflxu like
         """
-        logger.debug('Sending data to influx: %s' % (data_point))
+        logger.debug('Sending data to influx %s ...'%data_point[0])
         self._influx_client.write_points(data_point)
 
 
@@ -86,22 +91,25 @@ class Mysql2Influx:
             logger.debug('Got data from mysql')
             for row in data:
                 for key in row.keys():
-                    data_point = {"measurement":key,
-                                 "tags":{'site_name':self._site_name,
-                                    'source': 'wago'},
-                                 "time" : row['timestamp'],
-                               "fields" : {"value":row[key]}
-                                }
-                    data_list.append(data_point)
+                    epoch_time = row['timestamp'].isoformat()
+                    if not isinstance(row[key],datetime):
+                        data_point = {"measurement":key,
+                                     "tags":{"site_name":self._site_name,
+                                        "source": "wago"},
+                                     "time" : "%sZ"%epoch_time,
+                                   "fields" : {"value":row[key]}
+                                    }
+                        data_list.append(data_point)
                 self._send_data_to_influx(data_list)
             self._complete = True
 
     def _update_rows(self):
-        query = 'UPDATE %s SET %s = 1  WHERE %s = 0;'%(self._table,self._check_field,self._check_field)
+        query = 'UPDATE %s SET %s=1  WHERE %s=0;'%(self._table,self._check_field,self._check_field)
         if self._complete:
+           logger.debug('Updating rows : executing query %s '% query)
            c =  self._db_client.cursor()
            c.execute(query)
-
+           self._db_client.commit()
 def main():
     #Argument parsing
     parser = argparse.ArgumentParser(description = 'Get Time series data from MYSQL and push it to influxdb' )
