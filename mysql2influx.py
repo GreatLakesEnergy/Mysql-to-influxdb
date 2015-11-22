@@ -20,8 +20,12 @@ class Mysql2Influx:
         #TODO put site info into settings file
         self._site_name = config.get('site_info','site_name')
         self._table = config.get('mysql','table')
+        self._siteid_field = config.get('mysql','siteid_field')
 
-
+        if config.has_option('mysql','time_field'):
+            self._time_field = config.get('mysql','time_field')
+        else:
+            self._time_field = 'timestamp'
         #intitialise client for mysql database
         self._db_client = MySQLdb.connect ( config.get('mysql','host'),
                                             config.get('mysql','username'),
@@ -55,14 +59,14 @@ class Mysql2Influx:
         Once the data is configured and within influx we can pruge our database
         """
         if self._complete:
-            query = "SELECT * FROM TABLE %s WHERE %s = 0 ORDER BY timestamp DESC"%(self._table, self._check_field)
+            query = "SELECT * FROM TABLE %s WHERE %s = 0 ORDER BY %s DESC"%(self._table, self._check_fields,self._time_field)
 
 
     def _get_data_from_mysql(self):
         """
         get the cursor to dump all the data from mysql
         """
-        query = "SELECT * FROM `%s` WHERE `%s`=0 ORDER BY timestamp DESC"%(self._table,self._check_field)
+        query = "SELECT * FROM `%s` WHERE `%s`=0 ORDER BY %s DESC"%(self._table,self._check_field,self._time_field)
 
         logger.debug('executing query %s '% query)
         cursor = self._db_client.cursor()
@@ -85,16 +89,17 @@ class Mysql2Influx:
 
     def _format_data(self,data):
 
-        data_list =[]
         #turn time into epoch timesa
         if data:
             logger.debug('Got data from mysql')
             for row in data:
+                data_list =[]
                 for key in row.keys():
-                    epoch_time = row['timestamp'].isoformat()
+                    #format date to epoch
+                    epoch_time = row[self._time_field].isoformat()
                     if not isinstance(row[key],datetime):
                         data_point = {"measurement":key,
-                                     "tags":{"site_name":self._site_name,
+                                     "tags":{"site_name":row[self._siteid_field],
                                         "source": "wago"},
                                      "time" : "%sZ"%epoch_time,
                                    "fields" : {"value":row[key]}
@@ -115,7 +120,7 @@ def main():
     parser = argparse.ArgumentParser(description = 'Get Time series data from MYSQL and push it to influxdb' )
 
     parser.add_argument( '-d', '--debug', help = 'set logging level to debug', action = 'store_true')
-    parser.add_argument( '-c', '--config', help = 'config file location', action = 'store_true', default = 'settings.ini' )
+    parser.add_argument( '-c', '--config', help = 'config file location', nargs = 1, default = 'settings.ini' )
 
     args = parser.parse_args()
 
