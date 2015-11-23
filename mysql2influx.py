@@ -5,6 +5,7 @@ import os
 import argparse
 import MySQLdb
 import MySQLdb.cursors
+import time
 
 from ConfigParser import RawConfigParser
 from influxdb import InfluxDBClient
@@ -27,23 +28,40 @@ class Mysql2Influx:
         else:
             self._time_field = 'timestamp'
         #intitialise client for mysql database
-        self._db_client = MySQLdb.connect ( config.get('mysql','host'),
-                                            config.get('mysql','username'),
-                                            config.get('mysql','password'),
-                                            config.get('mysql','db'),
+        self._mysql_host = config.get('mysql','host')
+        self._mysql_username = config.get('mysql','username')
+        self._mysql_password = config.get('mysql','password')
+        self._mysql_db = config.get('mysql','db')
+
+        self._influx_db_host = config.get('influx','host')
+        self._influx_db_port = config.get('influx','port')
+        self._influx_db_username = config.get('influx','username')
+        self._influx_db_password = config.get('influx','password')
+        self._influx_db = config.get('influx','db')
+
+        self._complete = False
+        self._check_field = config.get('mysql','check_field')
+
+        self.initialise_database()
+
+
+    def initialise_database(self):
+        self._db_client = MySQLdb.connect ( self._mysql_host,
+                                            self._mysql_username,
+                                            self._mysql_password,
+                                            self._mysql_db,
                                             cursorclass = MySQLdb.cursors.DictCursor
                                             )
 
         self._influx_client = InfluxDBClient(
-                                            config.get('influx','host'),
-                                            config.get('influx','port'),
-                                            config.get('influx','username'),
-                                            config.get('influx','password'),
-                                            config.get('influx','db')
+                                            self._influx_db_host,
+                                            self._influx_db_port,
+                                            self._influx_db_username,
+                                            self._influx_db_password,
+                                            self._influx_db
                                             )
 
-        self._complete = False
-        self._check_field = config.get('mysql','check_field')
+
 
     def transfer_data(self):
         self._get_data_from_mysql()
@@ -51,7 +69,6 @@ class Mysql2Influx:
         self._update_rows()
 
         logger.debug('All data transfer  completed : %s '% self._complete)
-        self._db_client.close()
 
 
     def _purge_data_in_db(self):
@@ -121,6 +138,7 @@ def main():
 
     parser.add_argument( '-d', '--debug', help = 'set logging level to debug', action = 'store_true')
     parser.add_argument( '-c', '--config', help = 'config file location', nargs = 1, default = 'settings.ini' )
+    parser.add_argument( '-s', '--server', help = 'run as server with interval ',action = 'store_true' )
 
     args = parser.parse_args()
 
@@ -133,12 +151,19 @@ def main():
     config = RawConfigParser()
     config.read(args.config)
 
+    _sleep_time = float(config.get('server','interval'))
 
     logger.debug('configs  %s' % (config.sections()))
     #start
     mclient = Mysql2Influx(config)
-    mclient.transfer_data()
-
+    if not args.server:
+        mclient.transfer_data()
+    else:
+        logger.info('Starting up server mode interval:  %s' % _sleep_time)
+        while True:
+            mclient.transfer_data()
+            time.sleep(_sleep_time)
+            mclient.initialise_database()
 
 if __name__ == '__main__':
     #Check our config file
