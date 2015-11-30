@@ -121,7 +121,9 @@ class Mysql2Influx:
                                      "time" : "%sZ"%epoch_time,
                                    "fields" : {"value":row[key]}
                                     }
+
                         data_list.append(data_point)
+                        logger.debug("data_point = %s"%data_point)
                 self._send_data_to_influx(data_list)
             self._complete = True
 
