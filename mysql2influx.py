@@ -163,7 +163,10 @@ def main():
     else:
         logger.info('Starting up server mode interval:  %s' % _sleep_time)
         while True:
-            mclient.transfer_data()
+            try:
+                mclient.transfer_data()
+            except Exception,e:
+                logger.exception("Error occured will try again")
             time.sleep(_sleep_time)
             mclient.initialise_database()
 
