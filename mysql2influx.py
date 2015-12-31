@@ -105,7 +105,7 @@ class Mysql2Influx:
 
 
     def _format_data(self,data):
-
+        self._complete = False
         #turn time into epoch timesa
         if data:
             logger.debug('Got data from mysql')
